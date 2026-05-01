@@ -137,7 +137,7 @@ with st.sidebar:
         df_all = ss.upload_df
 
     # ── Live mode ─────────────────────────────────────────────────
-    else:
+    elif ss.mode == "live":
         path_input = st.text_input(
             "เส้นทางไฟล์ CSV",
             value=ss.live_path,
