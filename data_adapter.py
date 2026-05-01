@@ -278,15 +278,29 @@ def load_from_sheets_json(json_data: list) -> pd.DataFrame:
         df = pd.DataFrame(rows)
         if df.empty:
             return df
-        # Parse timestamps — handle both ISO and "Fri May 01 2026 13:39:24 GMT+0700" formats
-        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=False)
-        # If tz-aware, convert to Bangkok time and strip tz
-        if df["ts"].dt.tz is not None:
-            df["ts"] = df["ts"].dt.tz_convert("Asia/Bangkok").dt.tz_localize(None)
+
+        # Parse timestamps
+        # Google Sheets returns: "Fri May 01 2026 13:39:24 GMT+0700 (Indochina Time)"
+        # Strip the "(TIMEZONE NAME)" suffix before parsing
+        import re
+        def _parse_ts(s):
+            s = re.sub(r'\s*\([^)]*\)', '', str(s)).strip()  # remove "(Indochina Time)"
+            try:
+                t = pd.to_datetime(s, utc=False)
+                # strip tz offset if present
+                if t.tzinfo is not None:
+                    t = t.tz_localize(None) if hasattr(t, 'tz_localize') else t.replace(tzinfo=None)
+                return t
+            except Exception:
+                return pd.NaT
+
+        df["ts"] = df["ts"].apply(_parse_ts)
         df = df.dropna(subset=["ts"])
+        if df.empty:
+            return df
         df = _compute_derived(df)
         return df.sort_values("ts").reset_index(drop=True)
-    except Exception:
+    except Exception as e:
         return pd.DataFrame()
 
 
