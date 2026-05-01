@@ -79,7 +79,7 @@ _DEFAULTS = {
     "upload_df":         pd.DataFrame(),
     "auto_refresh":      False,
     "last_refresh":      0.0,
-    "sheets_url":        "",
+    "sheets_url":        "https://script.google.com/macros/s/AKfycbzEKs_PkRRieMmWlsM2nOxKmKok-1u65yxe9JiKN6JS7j1Vq_qfbszl4A-WO79SND7xRA/exec",
     "sheets_df":         pd.DataFrame(),
     "sheets_last_fetch": 0.0,
 }
