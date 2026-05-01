@@ -278,9 +278,11 @@ def load_from_sheets_json(json_data: list) -> pd.DataFrame:
         df = pd.DataFrame(rows)
         if df.empty:
             return df
-        # Parse ISO timestamps (Google Sheets returns UTC ISO strings)
-        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=True)
-        df["ts"] = df["ts"].dt.tz_convert("Asia/Bangkok").dt.tz_localize(None)
+        # Parse timestamps — handle both ISO and "Fri May 01 2026 13:39:24 GMT+0700" formats
+        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=False)
+        # If tz-aware, convert to Bangkok time and strip tz
+        if df["ts"].dt.tz is not None:
+            df["ts"] = df["ts"].dt.tz_convert("Asia/Bangkok").dt.tz_localize(None)
         df = df.dropna(subset=["ts"])
         df = _compute_derived(df)
         return df.sort_values("ts").reset_index(drop=True)
