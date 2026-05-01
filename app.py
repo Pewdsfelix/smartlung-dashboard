@@ -388,12 +388,12 @@ def _chart_60min(df: pd.DataFrame) -> go.Figure:
         margin={"l": 50, "r": 60, "t": 30, "b": 10},
         xaxis2={"title": "เวลา", "gridcolor": "#1A2A3A"},
         yaxis={"title": "PM2.5", "gridcolor": "#1A2A3A",
-               "titlefont": {"color": "#E63946"}},
+               "title_font": {"color": "#E63946"}},
         yaxis2={"title": "CO₂ (ppm)", "gridcolor": "#1A2A3A",
-                "titlefont": {"color": "#F4A261"}},
+                "title_font": {"color": "#F4A261"}},
         yaxis3={"title": "CAI", "overlaying": "y2", "side": "right",
                 "range": [0, 100], "showgrid": False,
-                "titlefont": {"color": "#00D4C2"}},
+                "title_font": {"color": "#00D4C2"}},
     )
     return fig
 
