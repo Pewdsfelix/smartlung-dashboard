@@ -25,7 +25,7 @@ from data_adapter import (
     CO2_HIGH, CO2_RECOVER, CO2_URGENT,
     PM_GATE, PM_HIGH,
     downsample, filter_today, get_last_valid_row,
-    load_csv_cached, load_csv_path_full,
+    load_csv_cached, load_csv_path_full, load_from_sheets_json,
 )
 from metrics import (
     cai_zone_distribution, compute_all_kpis, top_worst_periods,
@@ -70,13 +70,16 @@ st.markdown("""
 # SESSION STATE INIT
 # ══════════════════════════════════════════════════════════════════
 _DEFAULTS = {
-    "mode":         "upload",
-    "live_path":    "",
-    "live_df":      pd.DataFrame(),
-    "live_mtime":   0.0,
-    "upload_df":    pd.DataFrame(),
-    "auto_refresh": False,
-    "last_refresh": 0.0,
+    "mode":              "upload",
+    "live_path":         "",
+    "live_df":           pd.DataFrame(),
+    "live_mtime":        0.0,
+    "upload_df":         pd.DataFrame(),
+    "auto_refresh":      False,
+    "last_refresh":      0.0,
+    "sheets_url":        "",
+    "sheets_df":         pd.DataFrame(),
+    "sheets_last_fetch": 0.0,
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -111,10 +114,10 @@ with st.sidebar:
 
     mode_label = st.radio(
         "โหมดข้อมูล",
-        ["📂 อัปโหลดไฟล์ (Offline)", "📡 ไฟล์สด (Live)"],
-        index=0 if ss.mode == "upload" else 1,
+        ["📂 อัปโหลดไฟล์ (Offline)", "📡 ไฟล์สด (Live)", "☁️ Google Sheets (Auto)"],
+        index={"upload": 0, "live": 1, "sheets": 2}.get(ss.mode, 0),
     )
-    ss.mode = "upload" if "📂" in mode_label else "live"
+    ss.mode = "upload" if "📂" in mode_label else ("sheets" if "☁️" in mode_label else "live")
 
     # ── Upload mode ───────────────────────────────────────────────
     if ss.mode == "upload":
@@ -163,6 +166,46 @@ with st.sidebar:
             value=ss.auto_refresh,
         )
         df_all = ss.live_df
+
+    # ── Google Sheets mode ────────────────────────────────────────
+    elif ss.mode == "sheets":
+        import urllib.request as _urlreq
+        import json as _json
+
+        url_input = st.text_input(
+            "Google Apps Script URL",
+            value=ss.sheets_url,
+            placeholder="https://script.google.com/macros/s/.../exec",
+        )
+        ss.sheets_url = url_input.strip()
+
+        FETCH_INTERVAL = 300  # 5 นาที
+
+        col_btn, col_status = st.columns([1, 2])
+        force_refresh = col_btn.button("🔄 ดึงข้อมูลเดี๋ยวนี้")
+
+        if ss.sheets_url:
+            now = time.time()
+            need_fetch = (
+                force_refresh
+                or ss.sheets_df.empty
+                or (now - ss.sheets_last_fetch) > FETCH_INTERVAL
+            )
+            if need_fetch:
+                with st.spinner("กำลังดึงข้อมูลจาก Google Sheets…"):
+                    try:
+                        with _urlreq.urlopen(ss.sheets_url, timeout=20) as resp:
+                            data = _json.loads(resp.read().decode())
+                        ss.sheets_df = load_from_sheets_json(data)
+                        ss.sheets_last_fetch = time.time()
+                    except Exception as exc:
+                        st.error(f"ดึงข้อมูลไม่ได้: {exc}")
+
+            if not ss.sheets_df.empty:
+                remaining = int(FETCH_INTERVAL - (time.time() - ss.sheets_last_fetch))
+                col_status.success(f"{len(ss.sheets_df):,} แถว | รีเฟรชอีก {remaining//60}:{remaining%60:02d} นาที")
+
+        df_all = ss.sheets_df
 
     # ── Footer info ───────────────────────────────────────────────
     st.divider()

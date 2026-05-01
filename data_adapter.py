@@ -253,6 +253,41 @@ def load_csv_path_full(path: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+def load_from_sheets_json(json_data: list) -> pd.DataFrame:
+    """Convert Google Apps Script JSON array response to processed DataFrame."""
+    if not json_data:
+        return pd.DataFrame()
+    try:
+        rows = []
+        for item in json_data:
+            pm   = float(item.get("pm25", 0) or 0)
+            co2  = float(item.get("co2",  0) or 0)
+            rows.append({
+                "ts":         item.get("timestamp", ""),
+                "pm25":       pm,
+                "co2":        co2,
+                "temp_c":     float(item.get("temp", 0) or 0),
+                "rh":         float(item.get("rh",   0) or 0),
+                "cai":        int(item.get("cai",   0) or 0),
+                "level":      str(item.get("level", "SAFE")),
+                "fan_hepa":   int(item.get("fan",   0) or 0),
+                "fan_exh":    0,
+                "pm_status":  "VALID"   if pm  >= 0 else "INVALID",
+                "scd_status": "VALID"   if co2 > 0  else "INVALID",
+            })
+        df = pd.DataFrame(rows)
+        if df.empty:
+            return df
+        # Parse ISO timestamps (Google Sheets returns UTC ISO strings)
+        df["ts"] = pd.to_datetime(df["ts"], errors="coerce", utc=True)
+        df["ts"] = df["ts"].dt.tz_convert("Asia/Bangkok").dt.tz_localize(None)
+        df = df.dropna(subset=["ts"])
+        df = _compute_derived(df)
+        return df.sort_values("ts").reset_index(drop=True)
+    except Exception:
+        return pd.DataFrame()
+
+
 # ══════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════
