@@ -5,8 +5,10 @@ Run: streamlit run app.py
 
 from __future__ import annotations
 import io
+import json as _json
 import os
 import time
+import urllib.request as _urlreq
 from datetime import date, timedelta
 
 import matplotlib
@@ -89,6 +91,28 @@ ss = st.session_state
 # ══════════════════════════════════════════════════════════════════
 # COLOUR MAPS
 # ══════════════════════════════════════════════════════════════════
+OUTDOOR_STATION_ID = "351"  # สถานีสุรินทร์ Air4Thai
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_outdoor_pm25(station_id: str) -> dict:
+    """ดึง PM2.5 นอกห้องจาก Air4Thai API (cache 10 นาที)"""
+    try:
+        url = f"https://air4thai.com/forweb/getAQI_JSON.php?stationID={station_id}"
+        with _urlreq.urlopen(url, timeout=10) as resp:
+            data = _json.loads(resp.read().decode())
+        st_data = data["stations"][0]
+        aqi_last = st_data.get("AQILast", {})
+        pm25_info = aqi_last.get("PM25", {})
+        return {
+            "pm25":    float(pm25_info.get("value", -1) or -1),
+            "aqi":     pm25_info.get("aqi", "N/A"),
+            "color":   pm25_info.get("color", "#607D8B"),
+            "station": st_data.get("nameTH", "สุรินทร์"),
+            "time":    f"{aqi_last.get('date','')} {aqi_last.get('time','')}".strip(),
+        }
+    except Exception:
+        return {"pm25": -1, "aqi": "N/A", "color": "#607D8B", "station": "สุรินทร์", "time": ""}
+
 LEVEL_COLOR = {
     "EXCELLENT": "#4CAF50",
     "GOOD":      "#8BC34A",
@@ -623,10 +647,26 @@ with tab_live:
     with mid_col:
         # Current value cards
         c1, c2, c3, c4 = st.columns(4)
-        _kpi_card(c1, "ฝุ่น PM2.5",  f"{pm_now:.1f}",  "μg/m³",  "#E63946")
-        _kpi_card(c2, "CO₂",          f"{co2_now:.0f}", "ppm",     "#F4A261")
-        _kpi_card(c3, "อุณหภูมิ",    f"{temp_now:.1f}","°C",      "#4FC3F7")
-        _kpi_card(c4, "ความชื้น",    f"{rh_now:.0f}",  "%",       "#80DEEA")
+        _kpi_card(c1, "ฝุ่น PM2.5 (ในห้อง)",  f"{pm_now:.1f}",  "μg/m³",  "#E63946")
+        _kpi_card(c2, "CO₂",                    f"{co2_now:.0f}", "ppm",     "#F4A261")
+        _kpi_card(c3, "อุณหภูมิ",              f"{temp_now:.1f}","°C",      "#4FC3F7")
+        _kpi_card(c4, "ความชื้น",              f"{rh_now:.0f}",  "%",       "#80DEEA")
+
+        # Outdoor PM2.5 from Air4Thai
+        st.write("")
+        outdoor = fetch_outdoor_pm25(OUTDOOR_STATION_ID)
+        out_pm  = outdoor["pm25"]
+        out_val = f"{out_pm:.1f}" if out_pm >= 0 else "N/A"
+        out_col = "#E63946" if out_pm > 50 else ("#F4A261" if out_pm > 25 else "#4CAF50")
+        oc1, oc2, oc3 = st.columns(3)
+        _kpi_card(oc1, f"PM2.5 นอกห้อง ({outdoor['station']})", out_val, "μg/m³", out_col)
+        _kpi_card(oc2, "AQI นอกห้อง", outdoor["aqi"], "", out_col)
+        diff = pm_now - out_pm if out_pm >= 0 else None
+        diff_txt = f"{diff:+.1f}" if diff is not None else "N/A"
+        diff_color = "#4CAF50" if (diff is not None and diff < 0) else "#E63946"
+        _kpi_card(oc3, "ผลต่าง (ใน−นอก)", diff_txt, "μg/m³", diff_color)
+        if outdoor["time"]:
+            st.caption(f"ข้อมูลนอกห้อง: {outdoor['time']} (อัปเดตทุก 10 นาที)")
 
         st.write("")
         # 60-min chart
