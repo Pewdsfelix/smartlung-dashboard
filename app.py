@@ -125,7 +125,7 @@ _auto_apply_unoq_url()
 # ══════════════════════════════════════════════════════════════════
 # COLOUR MAPS
 # ══════════════════════════════════════════════════════════════════
-OUTDOOR_STATION_ID = "351"  # สถานีสุรินทร์ Air4Thai
+OUTDOOR_STATION_ID = "111t"  # สถานีสุรินทร์ Air4Thai
 
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_outdoor_pm25(station_id: str) -> dict:
