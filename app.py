@@ -799,21 +799,10 @@ with tab_live:
         _kpi_card(c3, "อุณหภูมิ",              f"{temp_now:.1f}","°C",      "#4FC3F7")
         _kpi_card(c4, "ความชื้น",              f"{rh_now:.0f}",  "%",       "#80DEEA")
 
-        # Outdoor PM2.5 from Air4Thai
-        st.write("")
-        outdoor = fetch_outdoor_pm25()
-        out_pm  = outdoor["pm25"]
-        out_val = f"{out_pm:.1f}" if out_pm >= 0 else "N/A"
-        out_col = "#E63946" if out_pm > 50 else ("#F4A261" if out_pm > 25 else "#4CAF50")
-        oc1, oc2, oc3 = st.columns(3)
-        _kpi_card(oc1, f"PM2.5 นอกห้อง ({outdoor['station']})", out_val, "μg/m³", out_col)
-        _kpi_card(oc2, "AQI นอกห้อง", outdoor["aqi"], "", out_col)
-        diff = pm_now - out_pm if out_pm >= 0 else None
-        diff_txt = f"{diff:+.1f}" if diff is not None else "N/A"
-        diff_color = "#4CAF50" if (diff is not None and diff < 0) else "#E63946"
-        _kpi_card(oc3, "ผลต่าง (ใน−นอก)", diff_txt, "μg/m³", diff_color)
-        if outdoor["time"]:
-            st.caption(f"ข้อมูลนอกห้อง: {outdoor['time']} (อัปเดตทุก 10 นาที)")
+        # Outdoor PM2.5 from Air4Thai — hidden (AWS cannot reach air4thai.com)
+        # To restore: uncomment the block below and re-enable fetch_outdoor_pm25()
+        # outdoor = fetch_outdoor_pm25()
+        # ...
 
         st.write("")
         # 60-min chart
