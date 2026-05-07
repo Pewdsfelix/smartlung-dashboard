@@ -381,7 +381,10 @@ with st.sidebar:
     # ── Footer info ───────────────────────────────────────────────
     st.divider()
     if not df_all.empty:
-        st.caption(f"ข้อมูลล่าสุด: {df_all['ts'].max().strftime('%d/%m %H:%M:%S')}")
+        from datetime import timezone, timedelta
+        _thai = timezone(timedelta(hours=7))
+        _ts_thai = df_all['ts'].max().to_pydatetime().replace(tzinfo=timezone.utc).astimezone(_thai)
+        st.caption(f"ข้อมูลล่าสุด: {_ts_thai.strftime('%d/%m %H:%M:%S')} (GMT+7)")
         st.caption(f"แถวทั้งหมด: {len(df_all):,}")
     else:
         st.caption("⏳ รอข้อมูล…")
