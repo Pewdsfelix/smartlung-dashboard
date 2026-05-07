@@ -680,7 +680,7 @@ with tab_live:
         # CAI gauge
         st.plotly_chart(
             _cai_gauge(cai_now, level_now),
-            use_container_width=True,
+            width='stretch',
             config={"displayModeBar": False},
         )
         level_col = LEVEL_COLOR.get(level_now, "#607D8B")
@@ -734,7 +734,7 @@ with tab_live:
         st.markdown("**ย้อนหลัง 60 นาที**")
         st.plotly_chart(
             _chart_60min(df_all),
-            use_container_width=True,
+            width='stretch',
             config={"displayModeBar": False},
         )
 
@@ -770,7 +770,7 @@ with tab_today:
             st.subheader("สัดส่วนระดับอากาศ (%)")
             st.plotly_chart(
                 _cai_zone_bar(zones),
-                use_container_width=True,
+                width='stretch',
                 config={"displayModeBar": False},
             )
 
@@ -792,7 +792,7 @@ with tab_today:
         st.subheader("เส้นเวลาระดับอากาศ")
         st.plotly_chart(
             _mode_timeline(df_today),
-            use_container_width=True,
+            width='stretch',
             config={"displayModeBar": False},
         )
 
@@ -841,7 +841,7 @@ with tab_alerts:
         })
         st.dataframe(
             display_ev,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             height=min(400, 55 + len(display_ev) * 35),
         )
