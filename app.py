@@ -97,6 +97,31 @@ for _k, _v in _DEFAULTS.items():
         st.session_state[_k] = _v
 ss = st.session_state
 
+# ── Auto-apply UNO Q URL from query string or Streamlit secret ────
+# Priority: ?unoq_url=... in URL > st.secrets["unoq_url"] > saved session value.
+# Lets the user bookmark a one-click dashboard URL or set a permanent default
+# in Streamlit Cloud → Settings → Secrets without typing the address each visit.
+def _auto_apply_unoq_url():
+    # 1. Query param wins (per-bookmark, easy to share)
+    try:
+        qp = st.query_params.get("unoq_url", "")
+        if isinstance(qp, list):  # older Streamlit returned lists
+            qp = qp[0] if qp else ""
+        if qp:
+            ss.unoq_url = qp.strip()
+            return
+    except Exception:
+        pass
+    # 2. Streamlit secret (set in Cloud app Settings → Secrets)
+    try:
+        sec = st.secrets.get("unoq_url", "") if hasattr(st, "secrets") else ""
+        if sec and ss.unoq_url == _DEFAULTS["unoq_url"]:
+            ss.unoq_url = str(sec).strip()
+    except Exception:
+        pass
+
+_auto_apply_unoq_url()
+
 # ══════════════════════════════════════════════════════════════════
 # COLOUR MAPS
 # ══════════════════════════════════════════════════════════════════
@@ -219,7 +244,10 @@ with st.sidebar:
             help=(
                 "รองรับทั้ง LAN IP (เช่น 192.168.1.24) และ public tunnel "
                 "(เช่น xxx.trycloudflare.com, xxx.ngrok-free.app). "
-                "ถ้าไม่ใส่ scheme จะเดาให้อัตโนมัติ."
+                "ถ้าไม่ใส่ scheme จะเดาให้อัตโนมัติ.\n\n"
+                "💡 Bookmark URL: ?unoq_url=xxx.trycloudflare.com — "
+                "หรือใส่ใน Streamlit Cloud → Settings → Secrets เป็น "
+                "unoq_url=\"xxx.trycloudflare.com\" เพื่อใช้ค่าเริ่มต้นถาวร."
             ),
         )
         ss.unoq_url = url_input.strip()
