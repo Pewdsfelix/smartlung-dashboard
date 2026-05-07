@@ -152,6 +152,18 @@ def _auto_apply_unoq_url():
 
 _auto_apply_unoq_url()
 
+# ── Optional HTTP Basic Auth credentials for the UNO Q ────────────
+# Reads `DASH_USER` / `DASH_PASS` from Streamlit secrets. Empty values mean
+# "no auth" so the dashboard still works against an unprotected device.
+import base64 as _b64
+
+def _unoq_auth_header() -> str:
+    user = _read_secret("DASH_USER")
+    pwd  = _read_secret("DASH_PASS")
+    if not user or not pwd:
+        return ""
+    return "Basic " + _b64.b64encode(f"{user}:{pwd}".encode()).decode()
+
 # ══════════════════════════════════════════════════════════════════
 # COLOUR MAPS
 # ══════════════════════════════════════════════════════════════════
@@ -318,8 +330,11 @@ with st.sidebar:
             )
             if need_fetch:
                 with st.spinner("กำลังดึงข้อมูลจาก UNO Q…"):
-                    df_csv = load_from_http_csv(ss.unoq_url, timeout=15.0)
-                    latest = load_from_http_latest(ss.unoq_url, timeout=5.0)
+                    _auth = _unoq_auth_header()
+                    df_csv = load_from_http_csv(ss.unoq_url, timeout=15.0,
+                                                auth_header=_auth)
+                    latest = load_from_http_latest(ss.unoq_url, timeout=5.0,
+                                                   auth_header=_auth)
                     if df_csv.empty and latest is None:
                         ss.unoq_last_error = "เชื่อมต่อ UNO Q ไม่ได้ — ตรวจสอบ URL/เครือข่าย"
                     else:

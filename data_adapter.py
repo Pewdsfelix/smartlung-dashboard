@@ -392,37 +392,48 @@ def _normalise_base_url(s: str) -> str:
     return f"http://{s}:8080"
 
 
-def _http_get(url: str, timeout: float = 10.0) -> bytes:
+def _http_get(url: str, timeout: float = 10.0, auth_header: str = "") -> bytes:
+    """GET `url` and return raw bytes. If `auth_header` is non-empty it is sent
+    as `Authorization: <auth_header>` (e.g. "Basic dXNlcjpwYXNz"), letting the
+    caller hit endpoints protected by HTTP Basic Auth on the UNO Q.
+    """
     import urllib.request
-    with urllib.request.urlopen(url, timeout=timeout) as resp:
+    req = urllib.request.Request(url)
+    if auth_header:
+        req.add_header("Authorization", auth_header)
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
 
 
-def load_from_http_csv(base_url: str, timeout: float = 10.0) -> pd.DataFrame:
+def load_from_http_csv(base_url: str, timeout: float = 10.0,
+                       auth_header: str = "") -> pd.DataFrame:
     """Fetch /data.csv from the UNO Q HTTP server and return a processed DataFrame.
 
     `base_url` accepts any of: full URL, bare IP, IP:port, or tunnel hostname
     (e.g. "https://foo.trycloudflare.com" or "192.168.1.24"). Returns an empty
-    DataFrame on any failure.
+    DataFrame on any failure. Pass `auth_header` if the device requires HTTP
+    Basic Auth.
     """
     base = _normalise_base_url(base_url)
     if not base:
         return pd.DataFrame()
     url = base + "/data.csv"
     try:
-        body = _http_get(url, timeout=timeout)
+        body = _http_get(url, timeout=timeout, auth_header=auth_header)
         raw = pd.read_csv(io.BytesIO(body), on_bad_lines="skip", low_memory=False)
         return _process(raw)
     except Exception:
         return pd.DataFrame()
 
 
-def load_from_http_latest(base_url: str, timeout: float = 5.0):
+def load_from_http_latest(base_url: str, timeout: float = 5.0,
+                          auth_header: str = ""):
     """Fetch /latest from the UNO Q HTTP server and return a single processed
     row as a dict (canonical keys: ts, pm25, co2, temp_c, rh, cai, level,
     fan_hepa, fan_exh, pm_status, scd_status, reason_tag).
 
-    Accepts the same URL forms as `load_from_http_csv`.
+    Accepts the same URL forms as `load_from_http_csv`. Pass `auth_header`
+    when the device requires HTTP Basic Auth.
     Returns None on failure or when the server has no readings yet.
     """
     import json as _json
@@ -431,7 +442,7 @@ def load_from_http_latest(base_url: str, timeout: float = 5.0):
         return None
     url = base + "/latest"
     try:
-        body = _http_get(url, timeout=timeout)
+        body = _http_get(url, timeout=timeout, auth_header=auth_header)
         obj = _json.loads(body.decode("utf-8"))
         if not isinstance(obj, dict) or not obj:
             return None
