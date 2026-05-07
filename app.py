@@ -72,7 +72,7 @@ st.markdown("""
 # SESSION STATE INIT
 # ══════════════════════════════════════════════════════════════════
 _DEFAULTS = {
-    "mode":              "upload",
+    "mode":              "unoq",
     "live_path":         "",
     "live_df":           pd.DataFrame(),
     "live_mtime":        0.0,
@@ -138,10 +138,14 @@ with st.sidebar:
 
     mode_label = st.radio(
         "โหมดข้อมูล",
-        ["📂 อัปโหลดไฟล์ (Offline)", "📡 ไฟล์สด (Live)", "☁️ Google Sheets (Auto)"],
-        index={"upload": 0, "live": 1, "sheets": 2}.get(ss.mode, 0),
+        ["☁️ UNO Q Auto (Live)", "📂 อัปโหลดไฟล์ (Offline)",
+         "📡 ไฟล์สด (Live)", "🗂️ Google Sheets"],
+        index={"unoq": 0, "upload": 1, "live": 2, "sheets": 3}.get(ss.mode, 0),
     )
-    ss.mode = "upload" if "📂" in mode_label else ("sheets" if "☁️" in mode_label else "live")
+    if "☁️" in mode_label:    ss.mode = "unoq"
+    elif "📂" in mode_label:  ss.mode = "upload"
+    elif "📡" in mode_label:  ss.mode = "live"
+    else:                     ss.mode = "sheets"
 
     # ── Upload mode ───────────────────────────────────────────────
     if ss.mode == "upload":
