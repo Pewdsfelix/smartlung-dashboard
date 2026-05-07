@@ -245,12 +245,26 @@ with st.sidebar:
                 "รองรับทั้ง LAN IP (เช่น 192.168.1.24) และ public tunnel "
                 "(เช่น xxx.trycloudflare.com, xxx.ngrok-free.app). "
                 "ถ้าไม่ใส่ scheme จะเดาให้อัตโนมัติ.\n\n"
-                "💡 Bookmark URL: ?unoq_url=xxx.trycloudflare.com — "
-                "หรือใส่ใน Streamlit Cloud → Settings → Secrets เป็น "
-                "unoq_url=\"xxx.trycloudflare.com\" เพื่อใช้ค่าเริ่มต้นถาวร."
+                "🔖 ค่านี้จะถูกบันทึกไว้ใน URL ของหน้าเว็บโดยอัตโนมัติ — "
+                "bookmark หน้าเว็บนี้แล้วเปิดใหม่ก็จะได้ URL เดิมเลย."
             ),
         )
         ss.unoq_url = url_input.strip()
+
+        # Sync the current URL into the browser's query string so reloading
+        # the page (or sharing the URL) preserves whatever the user typed.
+        # Without this, ss.unoq_url is only kept in session memory and a hard
+        # refresh resets it back to the default.
+        try:
+            current_qp = st.query_params.get("unoq_url", "")
+            if isinstance(current_qp, list):
+                current_qp = current_qp[0] if current_qp else ""
+            if ss.unoq_url and ss.unoq_url != current_qp:
+                st.query_params["unoq_url"] = ss.unoq_url
+            elif not ss.unoq_url and current_qp:
+                del st.query_params["unoq_url"]
+        except Exception:
+            pass
 
         col_btn, col_status = st.columns([1, 2])
         force_refresh = col_btn.button("🔄 ดึงข้อมูลเดี๋ยวนี้")
