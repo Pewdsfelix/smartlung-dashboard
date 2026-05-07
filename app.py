@@ -28,6 +28,7 @@ from data_adapter import (
     PM_GATE, PM_HIGH,
     downsample, filter_today, get_last_valid_row,
     load_csv_cached, load_csv_path_full, load_from_sheets_json,
+    load_from_http_csv, load_from_http_latest,
 )
 from metrics import (
     cai_zone_distribution, compute_all_kpis, top_worst_periods,
@@ -82,6 +83,14 @@ _DEFAULTS = {
     "sheets_url":        "https://script.google.com/macros/s/AKfycbzEKs_PkRRieMmWlsM2nOxKmKok-1u65yxe9JiKN6JS7j1Vq_qfbszl4A-WO79SND7xRA/exec",
     "sheets_df":         pd.DataFrame(),
     "sheets_last_fetch": 0.0,
+    # UNO Q direct HTTP — server root URL (LAN or tunnel). Streamlit Cloud
+    # cannot reach 192.168.x.x; for cloud use, expose the UNO Q via ngrok or
+    # similar and paste that URL here.
+    "unoq_url":          "http://192.168.1.24:8080",
+    "unoq_df":           pd.DataFrame(),
+    "unoq_latest":       None,
+    "unoq_last_fetch":   0.0,
+    "unoq_last_error":   "",
 }
 for _k, _v in _DEFAULTS.items():
     if _k not in st.session_state:
@@ -195,35 +204,53 @@ with st.sidebar:
         )
         df_all = ss.live_df
 
-    # ── UNO Q Auto mode ───────────────────────────────────────────
+    # ── UNO Q Auto mode — direct HTTP from main.py ───────────────
+    # Pulls /data.csv (full history) and /latest (live KPI tile) from the
+    # board's built-in HTTP server. Requires network reachability:
+    # - LAN:    paste http://<board-ip>:8080
+    # - Tunnel: paste public ngrok/cloudflare URL (needed on Streamlit Cloud)
     elif ss.mode == "unoq":
-        FETCH_INTERVAL = 60  # 1 นาที
+        FETCH_INTERVAL = 30  # 30s — UNO Q sketch pushes every 30s
+
+        url_input = st.text_input(
+            "URL ของ UNO Q",
+            value=ss.unoq_url,
+            placeholder="http://192.168.1.24:8080",
+            help="ที่อยู่ของบอร์ด UNO Q (LAN หรือ public tunnel)",
+        )
+        ss.unoq_url = url_input.strip()
 
         col_btn, col_status = st.columns([1, 2])
         force_refresh = col_btn.button("🔄 ดึงข้อมูลเดี๋ยวนี้")
 
-        if ss.sheets_url:
+        if ss.unoq_url:
             now = time.time()
             need_fetch = (
                 force_refresh
-                or ss.sheets_df.empty
-                or (now - ss.sheets_last_fetch) > FETCH_INTERVAL
+                or ss.unoq_df.empty
+                or (now - ss.unoq_last_fetch) > FETCH_INTERVAL
             )
             if need_fetch:
                 with st.spinner("กำลังดึงข้อมูลจาก UNO Q…"):
-                    try:
-                        with _urlreq.urlopen(ss.sheets_url, timeout=20) as resp:
-                            data = _json.loads(resp.read().decode())
-                        ss.sheets_df = load_from_sheets_json(data)
-                        ss.sheets_last_fetch = time.time()
-                    except Exception as exc:
-                        st.error(f"ดึงข้อมูลไม่ได้: {exc}")
+                    df_csv = load_from_http_csv(ss.unoq_url, timeout=15.0)
+                    latest = load_from_http_latest(ss.unoq_url, timeout=5.0)
+                    if df_csv.empty and latest is None:
+                        ss.unoq_last_error = "เชื่อมต่อ UNO Q ไม่ได้ — ตรวจสอบ URL/เครือข่าย"
+                    else:
+                        ss.unoq_df = df_csv
+                        ss.unoq_latest = latest
+                        ss.unoq_last_fetch = time.time()
+                        ss.unoq_last_error = ""
 
-            if not ss.sheets_df.empty:
-                remaining = int(FETCH_INTERVAL - (time.time() - ss.sheets_last_fetch))
-                col_status.success(f"{len(ss.sheets_df):,} แถว | รีเฟรชอีก {remaining//60}:{remaining%60:02d} นาที")
+            if ss.unoq_last_error:
+                col_status.error(ss.unoq_last_error)
+            elif not ss.unoq_df.empty:
+                remaining = max(0, int(FETCH_INTERVAL - (time.time() - ss.unoq_last_fetch)))
+                col_status.success(
+                    f"{len(ss.unoq_df):,} แถว | รีเฟรชอีก {remaining}s"
+                )
 
-        df_all = ss.sheets_df
+        df_all = ss.unoq_df
 
     # ── Google Sheets mode ────────────────────────────────────────
     elif ss.mode == "sheets":

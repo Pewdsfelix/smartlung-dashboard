@@ -28,7 +28,9 @@ CAI_CAUTION   = 40
 # COLUMN ALIASES — maps raw CSV column names → canonical names
 # ══════════════════════════════════════════════════════════════════
 _ALIASES: dict[str, list[str]] = {
-    "ts":         ["ts", "timestamp", "time", "datetime", "Timestamp"],
+    # "dt" comes from UNO Q main.py CSV — datetime string column. Without this
+    # alias, _parse_timestamps falls back to fake "today midnight + i*5s" stamps.
+    "ts":         ["ts", "timestamp", "time", "datetime", "Timestamp", "dt", "Datetime"],
     "pm25":       ["pm25", "PM25", "pm2_5", "pm2.5", "PM2.5", "PM", "pm"],
     "co2":        ["co2", "CO2", "co2_ppm", "CO2_ppm"],
     "temp_c":     ["temp_c", "temp", "T", "temperature", "temp_celsius"],
@@ -41,8 +43,9 @@ _ALIASES: dict[str, list[str]] = {
     "scd_status": ["scd_status", "scd_stat", "SCDStatus"],
 }
 
-# Canonical levels (Arduino firmware uses OK; we normalise to EXCELLENT)
-_LEVEL_REMAP = {"OK": "EXCELLENT"}
+# Canonical level remap. UNO Q firmware emits "WARMUP" while sensors are not
+# yet ready; treat that as SAFE for colour/messaging purposes.
+_LEVEL_REMAP = {"OK": "EXCELLENT", "WARMUP": "SAFE"}
 
 # ══════════════════════════════════════════════════════════════════
 # SCORING FUNCTIONS  (vectorised — operate on numpy arrays)
@@ -140,12 +143,22 @@ def _parse_timestamps(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     numeric = pd.to_numeric(df["ts"], errors="coerce")
-    if numeric.notna().mean() > 0.8:          # majority numeric → elapsed seconds
-        df["ts"] = pd.Timestamp(midnight) + pd.to_timedelta(numeric, unit="s")
+    if numeric.notna().mean() > 0.8:
+        # Disambiguate elapsed-seconds-from-midnight (small ints) from unix
+        # epoch (>= 10^9 ≈ year 2001). UNO Q's /latest JSON sends unix ts.
+        med = float(numeric.dropna().median())
+        if med >= 1_000_000_000:              # unix epoch (s)
+            df["ts"] = pd.to_datetime(numeric, unit="s", errors="coerce")
+        elif med >= 1_000_000_000_000:        # unix epoch (ms), defensive
+            df["ts"] = pd.to_datetime(numeric, unit="ms", errors="coerce")
+        else:                                  # elapsed seconds since midnight
+            df["ts"] = pd.Timestamp(midnight) + pd.to_timedelta(numeric, unit="s")
         df["ts"] = df["ts"].fillna(_fallback_series())
         return df
 
-    parsed = pd.to_datetime(df["ts"], errors="coerce", infer_datetime_format=True)
+    # pandas 2.x removed `infer_datetime_format`; format inference is now the
+    # default behaviour of pd.to_datetime.
+    parsed = pd.to_datetime(df["ts"], errors="coerce")
     if parsed.notna().mean() > 0.8:
         df["ts"] = parsed.fillna(_fallback_series())
         return df
@@ -332,3 +345,61 @@ def downsample(df: pd.DataFrame, max_points: int = 2000) -> pd.DataFrame:
         return df
     step = len(df) // max_points
     return df.iloc[::step].reset_index(drop=True)
+
+
+# ══════════════════════════════════════════════════════════════════
+# UNO Q HTTP LOADERS  (fetch directly from main.py's HTTP server)
+# ══════════════════════════════════════════════════════════════════
+# main.py serves:
+#   GET /data.csv  → CSV columns: dt,pm25,co2,temp,rh,cai,level,hepa,exh,filter_h
+#   GET /latest    → JSON {id,ts,dt,pm25,co2,temp,rh,cai,level,hepa,exh,filter_h}
+# Only reachable when the dashboard process can hit the UNO Q over the network
+# (LAN, USB-tether, or public tunnel). Streamlit Cloud cannot reach a private
+# 192.168.x.x address.
+
+def _http_get(url: str, timeout: float = 10.0) -> bytes:
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        return resp.read()
+
+
+def load_from_http_csv(base_url: str, timeout: float = 10.0) -> pd.DataFrame:
+    """Fetch /data.csv from the UNO Q HTTP server and return a processed DataFrame.
+
+    `base_url` is the server root, e.g. "http://192.168.1.24:8080" — trailing
+    slash optional. Returns an empty DataFrame on any failure.
+    """
+    if not base_url:
+        return pd.DataFrame()
+    url = base_url.rstrip("/") + "/data.csv"
+    try:
+        body = _http_get(url, timeout=timeout)
+        raw = pd.read_csv(io.BytesIO(body), on_bad_lines="skip", low_memory=False)
+        return _process(raw)
+    except Exception:
+        return pd.DataFrame()
+
+
+def load_from_http_latest(base_url: str, timeout: float = 5.0) -> dict | None:
+    """Fetch /latest from the UNO Q HTTP server and return a single processed
+    row as a dict (canonical keys: ts, pm25, co2, temp_c, rh, cai, level,
+    fan_hepa, fan_exh, pm_status, scd_status, reason_tag).
+
+    Returns None on failure or when the server has no readings yet.
+    """
+    if not base_url:
+        return None
+    url = base_url.rstrip("/") + "/latest"
+    try:
+        body = _http_get(url, timeout=timeout)
+        obj = pd.read_json(io.BytesIO(body), typ="series")
+        if obj.empty:
+            return None
+        # Run the single row through the same processing pipeline so callers
+        # receive canonical column names regardless of upstream changes.
+        df = _process(pd.DataFrame([obj.to_dict()]))
+        if df.empty:
+            return None
+        return df.iloc[-1].to_dict()
+    except Exception:
+        return None
