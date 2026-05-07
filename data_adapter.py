@@ -322,10 +322,12 @@ def load_from_sheets_json(json_data: list) -> pd.DataFrame:
 # ══════════════════════════════════════════════════════════════════
 
 def filter_today(df: pd.DataFrame) -> pd.DataFrame:
-    """Return only rows whose timestamp is today (local date)."""
+    """Return only rows whose timestamp is today (Thai time UTC+7)."""
     if df.empty:
         return df
-    mask = df["ts"].dt.date == date.today()
+    from datetime import timezone, timedelta
+    thai_now = datetime.now(timezone(timedelta(hours=7))).date()
+    mask = df["ts"].dt.date == thai_now
     return df.loc[mask].reset_index(drop=True)
 
 
