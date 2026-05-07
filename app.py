@@ -86,7 +86,7 @@ _DEFAULTS = {
     # UNO Q direct HTTP — server root URL (LAN or tunnel). Streamlit Cloud
     # cannot reach 192.168.x.x; for cloud use, expose the UNO Q via ngrok or
     # similar and paste that URL here.
-    "unoq_url":          "http://192.168.1.24:8080",
+    "unoq_url":          "https://shortcut-dollop-barmaid.ngrok-free.dev",
     "unoq_df":           pd.DataFrame(),
     "unoq_latest":       None,
     "unoq_last_fetch":   0.0,
