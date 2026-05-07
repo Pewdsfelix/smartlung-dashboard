@@ -195,6 +195,36 @@ with st.sidebar:
         )
         df_all = ss.live_df
 
+    # ── UNO Q Auto mode ───────────────────────────────────────────
+    elif ss.mode == "unoq":
+        FETCH_INTERVAL = 60  # 1 นาที
+
+        col_btn, col_status = st.columns([1, 2])
+        force_refresh = col_btn.button("🔄 ดึงข้อมูลเดี๋ยวนี้")
+
+        if ss.sheets_url:
+            now = time.time()
+            need_fetch = (
+                force_refresh
+                or ss.sheets_df.empty
+                or (now - ss.sheets_last_fetch) > FETCH_INTERVAL
+            )
+            if need_fetch:
+                with st.spinner("กำลังดึงข้อมูลจาก UNO Q…"):
+                    try:
+                        with _urlreq.urlopen(ss.sheets_url, timeout=20) as resp:
+                            data = _json.loads(resp.read().decode())
+                        ss.sheets_df = load_from_sheets_json(data)
+                        ss.sheets_last_fetch = time.time()
+                    except Exception as exc:
+                        st.error(f"ดึงข้อมูลไม่ได้: {exc}")
+
+            if not ss.sheets_df.empty:
+                remaining = int(FETCH_INTERVAL - (time.time() - ss.sheets_last_fetch))
+                col_status.success(f"{len(ss.sheets_df):,} แถว | รีเฟรชอีก {remaining//60}:{remaining%60:02d} นาที")
+
+        df_all = ss.sheets_df
+
     # ── Google Sheets mode ────────────────────────────────────────
     elif ss.mode == "sheets":
         import urllib.request as _urlreq
