@@ -158,13 +158,20 @@ _auto_apply_unoq_url()
 OUTDOOR_STATION_ID = "111t"  # สถานีสุรินทร์ Air4Thai
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_outdoor_pm25(station_id: str) -> dict:
-    """ดึง PM2.5 นอกห้องจาก Air4Thai API (cache 10 นาที)"""
+def fetch_outdoor_pm25(_unused: str = "") -> dict:
+    """ดึง PM2.5 นอกห้องจาก Air4Thai — ค้นหาสถานีสุรินทร์จากชื่อ"""
+    _default = {"pm25": -1, "aqi": "N/A", "color": "#607D8B", "station": "สุรินทร์", "time": ""}
     try:
-        url = f"https://air4thai.com/forweb/getAQI_JSON.php?stationID={station_id}"
-        with _urlreq.urlopen(url, timeout=10) as resp:
+        url = "https://air4thai.com/forweb/getAQI_JSON.php"
+        with _urlreq.urlopen(url, timeout=15) as resp:
             data = _json.loads(resp.read().decode())
-        st_data = data["stations"][0]
+        stations = data.get("stations", [])
+        st_data = next(
+            (s for s in stations if "สุรินทร์" in s.get("nameTH", "")),
+            None
+        )
+        if st_data is None:
+            return _default
         aqi_last = st_data.get("AQILast", {})
         pm25_info = aqi_last.get("PM25", {})
         return {
@@ -175,7 +182,7 @@ def fetch_outdoor_pm25(station_id: str) -> dict:
             "time":    f"{aqi_last.get('date','')} {aqi_last.get('time','')}".strip(),
         }
     except Exception:
-        return {"pm25": -1, "aqi": "N/A", "color": "#607D8B", "station": "สุรินทร์", "time": ""}
+        return _default
 
 LEVEL_COLOR = {
     "EXCELLENT": "#4CAF50",
@@ -794,7 +801,7 @@ with tab_live:
 
         # Outdoor PM2.5 from Air4Thai
         st.write("")
-        outdoor = fetch_outdoor_pm25(OUTDOOR_STATION_ID)
+        outdoor = fetch_outdoor_pm25()
         out_pm  = outdoor["pm25"]
         out_val = f"{out_pm:.1f}" if out_pm >= 0 else "N/A"
         out_col = "#E63946" if out_pm > 50 else ("#F4A261" if out_pm > 25 else "#4CAF50")
