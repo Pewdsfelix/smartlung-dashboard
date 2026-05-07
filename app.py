@@ -98,27 +98,57 @@ for _k, _v in _DEFAULTS.items():
 ss = st.session_state
 
 # ── Auto-apply UNO Q URL from query string or Streamlit secret ────
-# Priority: ?unoq_url=... in URL > st.secrets["unoq_url"] > saved session value.
-# Lets the user bookmark a one-click dashboard URL or set a permanent default
-# in Streamlit Cloud → Settings → Secrets without typing the address each visit.
+# Priority: ?unoq_url=... > st.secrets["unoq_url"] > saved session value.
+# Runs ONCE per browser session. After that, the text_input widget owns the
+# state via its `key`, and a sync-back at the bottom of the sidebar mode
+# block keeps the browser URL in sync.
+ss._unoq_auto_source = ss.get("_unoq_auto_source", "")
+
+def _read_query_param(name: str) -> str:
+    """Robust query-param reader — handles new dict-like API and old list API."""
+    try:
+        qp = st.query_params
+        # Try mapping access first
+        try:
+            v = qp[name]
+            if isinstance(v, list):
+                return v[0] if v else ""
+            return str(v)
+        except (KeyError, TypeError):
+            pass
+        # Fallback to .get
+        v = qp.get(name, "")
+        if isinstance(v, list):
+            return v[0] if v else ""
+        return str(v) if v else ""
+    except Exception:
+        return ""
+
+def _read_secret(name: str) -> str:
+    try:
+        if hasattr(st, "secrets"):
+            v = st.secrets.get(name, "")
+            return str(v).strip() if v else ""
+    except Exception:
+        pass
+    return ""
+
 def _auto_apply_unoq_url():
-    # 1. Query param wins (per-bookmark, easy to share)
-    try:
-        qp = st.query_params.get("unoq_url", "")
-        if isinstance(qp, list):  # older Streamlit returned lists
-            qp = qp[0] if qp else ""
-        if qp:
-            ss.unoq_url = qp.strip()
-            return
-    except Exception:
-        pass
-    # 2. Streamlit secret (set in Cloud app Settings → Secrets)
-    try:
-        sec = st.secrets.get("unoq_url", "") if hasattr(st, "secrets") else ""
-        if sec and ss.unoq_url == _DEFAULTS["unoq_url"]:
-            ss.unoq_url = str(sec).strip()
-    except Exception:
-        pass
+    if ss.get("_unoq_url_applied"):
+        return
+    ss._unoq_url_applied = True
+
+    qp_val = _read_query_param("unoq_url").strip()
+    if qp_val:
+        ss.unoq_url = qp_val
+        ss._unoq_auto_source = f"query string (?unoq_url={qp_val[:40]}…)"
+        return
+    sec_val = _read_secret("unoq_url")
+    if sec_val:
+        ss.unoq_url = sec_val
+        ss._unoq_auto_source = "Streamlit Cloud secret"
+        return
+    ss._unoq_auto_source = "default (no query param, no secret)"
 
 _auto_apply_unoq_url()
 
@@ -237,28 +267,31 @@ with st.sidebar:
     elif ss.mode == "unoq":
         FETCH_INTERVAL = 30  # 30s — UNO Q sketch pushes every 30s
 
-        url_input = st.text_input(
+        # Bind widget directly to session_state["unoq_url_widget"] via key.
+        # On first render, seed it from ss.unoq_url (which was just populated
+        # by _auto_apply_unoq_url from the query param / secret / default).
+        if "unoq_url_widget" not in ss:
+            ss.unoq_url_widget = ss.unoq_url
+
+        st.text_input(
             "URL ของ UNO Q",
-            value=ss.unoq_url,
+            key="unoq_url_widget",
             placeholder="192.168.1.24  หรือ  xxx.trycloudflare.com",
             help=(
                 "รองรับทั้ง LAN IP (เช่น 192.168.1.24) และ public tunnel "
                 "(เช่น xxx.trycloudflare.com, xxx.ngrok-free.app). "
                 "ถ้าไม่ใส่ scheme จะเดาให้อัตโนมัติ.\n\n"
-                "🔖 ค่านี้จะถูกบันทึกไว้ใน URL ของหน้าเว็บโดยอัตโนมัติ — "
-                "bookmark หน้าเว็บนี้แล้วเปิดใหม่ก็จะได้ URL เดิมเลย."
+                "🔖 ค่านี้จะถูกบันทึกไว้ใน URL ของหน้าเว็บโดยอัตโนมัติ."
             ),
         )
-        ss.unoq_url = url_input.strip()
+        ss.unoq_url = ss.unoq_url_widget.strip()
 
-        # Sync the current URL into the browser's query string so reloading
-        # the page (or sharing the URL) preserves whatever the user typed.
-        # Without this, ss.unoq_url is only kept in session memory and a hard
-        # refresh resets it back to the default.
+        # Diagnostic — shows where the URL came from on this page load
+        st.caption(f"แหล่งที่มา: {ss._unoq_auto_source}")
+
+        # Sync current URL → browser query string so reloads / shares preserve it
         try:
-            current_qp = st.query_params.get("unoq_url", "")
-            if isinstance(current_qp, list):
-                current_qp = current_qp[0] if current_qp else ""
+            current_qp = _read_query_param("unoq_url")
             if ss.unoq_url and ss.unoq_url != current_qp:
                 st.query_params["unoq_url"] = ss.unoq_url
             elif not ss.unoq_url and current_qp:
