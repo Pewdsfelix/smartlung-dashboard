@@ -380,24 +380,25 @@ def load_from_http_csv(base_url: str, timeout: float = 10.0) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def load_from_http_latest(base_url: str, timeout: float = 5.0) -> dict | None:
+def load_from_http_latest(base_url: str, timeout: float = 5.0):
     """Fetch /latest from the UNO Q HTTP server and return a single processed
     row as a dict (canonical keys: ts, pm25, co2, temp_c, rh, cai, level,
     fan_hepa, fan_exh, pm_status, scd_status, reason_tag).
 
     Returns None on failure or when the server has no readings yet.
     """
+    import json as _json
     if not base_url:
         return None
     url = base_url.rstrip("/") + "/latest"
     try:
         body = _http_get(url, timeout=timeout)
-        obj = pd.read_json(io.BytesIO(body), typ="series")
-        if obj.empty:
+        obj = _json.loads(body.decode("utf-8"))
+        if not isinstance(obj, dict) or not obj:
             return None
         # Run the single row through the same processing pipeline so callers
         # receive canonical column names regardless of upstream changes.
-        df = _process(pd.DataFrame([obj.to_dict()]))
+        df = _process(pd.DataFrame([obj]))
         if df.empty:
             return None
         return df.iloc[-1].to_dict()
