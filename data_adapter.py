@@ -357,6 +357,39 @@ def downsample(df: pd.DataFrame, max_points: int = 2000) -> pd.DataFrame:
 # (LAN, USB-tether, or public tunnel). Streamlit Cloud cannot reach a private
 # 192.168.x.x address.
 
+def _normalise_base_url(s: str) -> str:
+    """Accept any of: full URL, bare IP, IP:port, or tunnel hostname.
+    Returns a complete `scheme://host[:port]` with no trailing slash.
+
+    Rules (in order):
+      1. Already has http:// or https:// → use as-is
+      2. Tunnel hostname (trycloudflare.com, ngrok-free.app, ngrok.io,
+         ngrok.app, loca.lt, serveo.net) → https://, no added port
+      3. Plain IPv4 [:port] → http://<ip>:<port or 8080>
+      4. Anything else containing a dot → assume public host over https
+      5. Bare hostname → http://<host>:8080 (LAN-style)
+    """
+    s = (s or "").strip().rstrip("/")
+    if not s:
+        return ""
+    if s.startswith(("http://", "https://")):
+        return s
+    tunnel_hosts = ("trycloudflare.com", "ngrok-free.app", "ngrok.io",
+                    "ngrok.app", "loca.lt", "serveo.net", "tunnelmole.com")
+    host_part = s.split(":", 1)[0]
+    if any(host_part.endswith(h) for h in tunnel_hosts):
+        return f"https://{s}"
+    # Pure IPv4 (with optional :port) — LAN UNO Q on :8080 unless a port given
+    bare = s.split(":", 1)[0]
+    if bare.replace(".", "").isdigit() and bare.count(".") == 3:
+        return f"http://{s}" if ":" in s else f"http://{s}:8080"
+    # Anything else with a dot — assume public hostname over https
+    if "." in s:
+        return f"https://{s}"
+    # Bare hostname — assume LAN
+    return f"http://{s}:8080"
+
+
 def _http_get(url: str, timeout: float = 10.0) -> bytes:
     import urllib.request
     with urllib.request.urlopen(url, timeout=timeout) as resp:
@@ -366,12 +399,14 @@ def _http_get(url: str, timeout: float = 10.0) -> bytes:
 def load_from_http_csv(base_url: str, timeout: float = 10.0) -> pd.DataFrame:
     """Fetch /data.csv from the UNO Q HTTP server and return a processed DataFrame.
 
-    `base_url` is the server root, e.g. "http://192.168.1.24:8080" — trailing
-    slash optional. Returns an empty DataFrame on any failure.
+    `base_url` accepts any of: full URL, bare IP, IP:port, or tunnel hostname
+    (e.g. "https://foo.trycloudflare.com" or "192.168.1.24"). Returns an empty
+    DataFrame on any failure.
     """
-    if not base_url:
+    base = _normalise_base_url(base_url)
+    if not base:
         return pd.DataFrame()
-    url = base_url.rstrip("/") + "/data.csv"
+    url = base + "/data.csv"
     try:
         body = _http_get(url, timeout=timeout)
         raw = pd.read_csv(io.BytesIO(body), on_bad_lines="skip", low_memory=False)
@@ -385,12 +420,14 @@ def load_from_http_latest(base_url: str, timeout: float = 5.0):
     row as a dict (canonical keys: ts, pm25, co2, temp_c, rh, cai, level,
     fan_hepa, fan_exh, pm_status, scd_status, reason_tag).
 
+    Accepts the same URL forms as `load_from_http_csv`.
     Returns None on failure or when the server has no readings yet.
     """
     import json as _json
-    if not base_url:
+    base = _normalise_base_url(base_url)
+    if not base:
         return None
-    url = base_url.rstrip("/") + "/latest"
+    url = base + "/latest"
     try:
         body = _http_get(url, timeout=timeout)
         obj = _json.loads(body.decode("utf-8"))

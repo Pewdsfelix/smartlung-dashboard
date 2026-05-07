@@ -215,8 +215,12 @@ with st.sidebar:
         url_input = st.text_input(
             "URL ของ UNO Q",
             value=ss.unoq_url,
-            placeholder="http://192.168.1.24:8080",
-            help="ที่อยู่ของบอร์ด UNO Q (LAN หรือ public tunnel)",
+            placeholder="192.168.1.24  หรือ  xxx.trycloudflare.com",
+            help=(
+                "รองรับทั้ง LAN IP (เช่น 192.168.1.24) และ public tunnel "
+                "(เช่น xxx.trycloudflare.com, xxx.ngrok-free.app). "
+                "ถ้าไม่ใส่ scheme จะเดาให้อัตโนมัติ."
+            ),
         )
         ss.unoq_url = url_input.strip()
 
